@@ -2062,8 +2062,7 @@ func truncateKiroPayloadToLimit(payload *KiroPayload, hasPriming bool) error {
 	rebuilt = append(rebuilt, tail...)
 	payload.ConversationState.History = rebuilt
 
-	shrinkKiroPayloadText(payload)
-	if kiroPayloadByteSize(payload) <= kiroMaxPayloadBytes &&
+	if fitKiroPayload(payload, primingCount) &&
 		kiroTailToolResultsPaired(tail, current) {
 		return nil
 	}
@@ -2086,8 +2085,7 @@ func truncateKiroPayloadToLimit(payload *KiroPayload, hasPriming bool) error {
 		rebuilt = append(rebuilt, candidate...)
 		payload.ConversationState.History = rebuilt
 
-		shrinkKiroPayloadText(payload)
-		if kiroPayloadByteSize(payload) <= kiroMaxPayloadBytes {
+		if fitKiroPayload(payload, primingCount) {
 			return nil
 		}
 	}
@@ -2119,60 +2117,6 @@ func kiroPayloadByteSize(payload *KiroPayload) int {
 		return 0
 	}
 	return len(raw)
-}
-
-func shrinkKiroPayloadText(payload *KiroPayload) {
-	for {
-		size := kiroPayloadByteSize(payload)
-		if size <= kiroMaxPayloadBytes {
-			return
-		}
-		target := longestKiroShrinkableText(payload)
-		if target == nil || len(*target) == 0 {
-			return
-		}
-		nextLen := len(*target) - (size - kiroMaxPayloadBytes)
-		if nextLen < 0 {
-			nextLen = 0
-		}
-		shortened := truncateUTF8(*target, nextLen)
-		if len(shortened) >= len(*target) {
-			*target = ""
-			continue
-		}
-		*target = shortened
-	}
-}
-
-func longestKiroShrinkableText(payload *KiroPayload) *string {
-	var longest *string
-	consider := func(text *string) {
-		if longest == nil || len(*text) > len(*longest) {
-			longest = text
-		}
-	}
-	current := &payload.ConversationState.CurrentMessage.UserInputMessage
-	consider(&current.Content)
-	appendKiroToolResultTexts(current.UserInputMessageContext, consider)
-	for i := range payload.ConversationState.History {
-		msg := payload.ConversationState.History[i].UserInputMessage
-		if msg == nil {
-			continue
-		}
-		appendKiroToolResultTexts(msg.UserInputMessageContext, consider)
-	}
-	return longest
-}
-
-func appendKiroToolResultTexts(ctx *KiroUserInputMessageContext, consider func(*string)) {
-	if ctx == nil {
-		return
-	}
-	for i := range ctx.ToolResults {
-		for j := range ctx.ToolResults[i].Content {
-			consider(&ctx.ToolResults[i].Content[j].Text)
-		}
-	}
 }
 
 func newClaudeMessageID() string {
